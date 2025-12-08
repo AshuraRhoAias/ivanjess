@@ -1,0 +1,68 @@
+.formulario {
+    width: 100%;
+    height: 100vh;
+    display: grid;
+    justify-content: center;
+    align-items: center;
+}
+
+form {
+    width: 300px;
+    border: 2px solid #949494;
+    border-radius: 20px;
+    padding: 60px 20px;
+    display: grid;
+    gap: 20px;
+
+    .titles {
+        text-align: center;
+    }
+
+    .datos {
+        display: grid;
+        gap: 10px;
+
+        input {
+            padding: 5px;
+            border-radius: 10px;
+        }
+
+        button {
+            height: 50px;
+            padding: 10px;
+            border-radius: 30px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        button:hover {
+            font-size: 17px;
+            border-radius: 32px;
+        }
+    }
+}
+
+.error-message {
+    background-color: #fee;
+    color: #c33;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #fcc;
+    margin-bottom: 15px;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+}
+
+form button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-logout {
+    transition: all 0.3s ease;
+}
+
+.btn-logout:hover {
+    background: #bb2d3b !important;
+}

@@ -1,66 +1,110 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+"use client";
+import React, { useState } from "react";
+import { CartProvider } from "@/Context/CartContext";
+import { AuthProvider, useAuth } from "@/Context/AuthContext";
+import Header from "@/Utils/Header";
+import HandeRouter from "@/Utils/HandeRouter";
+import '@/Styles/Login.css';
 
-export default function Home() {
+function AppContent() {
+  const [route, setRoute] = useState("home");
+  const { logout } = useAuth();
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.js file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <CartProvider>
+      <div style={{ padding: '30px' }}>
+        <Header route={route} setRoute={setRoute} onLogout={logout} />
+        <HandeRouter route={route} />
+      </div>
+    </CartProvider>
+  );
+}
+
+function Login() {
+  const { login } = useAuth();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      await login(username, password);
+    } catch (err) {
+      setError(err.message || 'Usuario o contraseña incorrectos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="formulario">
+      <form onSubmit={handleSubmit}>
+        <section className="titles">
+          <h1>Sistema de ventas</h1>
+          <p>Iniciar sesión para continuar</p>
+        </section>
+
+        <section className="datos">
+          {error && <div className="error-message">⚠️ {error}</div>}
+
+          <label>Username:</label>
+          <input
+            type="text"
+            placeholder="Introduce tu Usuario"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            disabled={loading}
+          />
+
+          <label>Password:</label>
+          <input
+            type="password"
+            placeholder="Introduce tu contraseña"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            disabled={loading}
+          />
+
+          <button type="submit" disabled={loading}>
+            {loading ? 'Iniciando sesión...' : 'Login'}
+          </button>
+        </section>
+      </form>
     </div>
+  );
+}
+
+function ProtectedRoute({ children }) {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <h2>Cargando...</h2>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
+  return children;
+}
+
+export default function Page() {
+  return (
+    <AuthProvider>
+      <ProtectedRoute>
+        <AppContent />
+      </ProtectedRoute>
+    </AuthProvider>
   );
 }
