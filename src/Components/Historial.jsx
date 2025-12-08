@@ -1,72 +1,149 @@
+'use client'
 import React, { useState, useEffect } from 'react';
 import '@/Styles/Historial.css';
+import { apiClient, API_ENDPOINTS } from '@/Utils/ApiConfig';
 
 function Historial() {
-    // Inicializa con datos de ejemplo directamente
-    const [ventas, setVentas] = useState([
-        {
-            id: 'SALE-1764627402098',
-            fecha: '1/12/2025, 16:16:42',
-            metodoPago: 'cash',
-            vendedor: 'pepe',
-            productos: [
-                { nombre: 'Laptop HP x2', precio: 1799.88, cantidad: 1 },
-                { nombre: 'Mouse Inalámbrico x1', precio: 29.99, cantidad: 1 }
-            ],
-            total: 1829.97
-        }
-    ]);
-
+    const [ventas, setVentas] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [vendedoresUnicos, setVendedoresUnicos] = useState([]);
     const [filtros, setFiltros] = useState({
         metodoPago: 'Todos',
-        vendedor: 'Todos'
+        vendedor: 'Todos',
+        fechaInicio: '',
+        fechaFin: ''
     });
 
-    // Si necesitas cargar datos desde una API, usa este useEffect
     useEffect(() => {
-        // Función para cargar ventas
-        const cargarVentas = async () => {
-            try {
-                // const response = await fetch('/api/ventas');
-                // const data = await response.json();
-                // setVentas(data);
-            } catch (error) {
-                console.error('Error al cargar ventas:', error);
-            }
-        };
-
-        // Descomenta cuando tengas API real
-        // cargarVentas();
+        cargarVentas();
     }, []);
 
-    // Cálculos de estadísticas
+    const cargarVentas = async () => {
+        try {
+            setLoading(true);
+            const data = await apiClient.get(API_ENDPOINTS.SALES_HISTORY);
+
+            // Parsear productos si vienen como JSON string
+            const ventasFormateadas = data.map(venta => ({
+                ...venta,
+                productos: typeof venta.productos === 'string'
+                    ? JSON.parse(venta.productos)
+                    : venta.productos
+            }));
+
+            setVentas(ventasFormateadas);
+
+            // Extraer vendedores únicos
+            const vendedores = [...new Set(ventasFormateadas.map(v => v.vendedor))];
+            setVendedoresUnicos(vendedores);
+
+        } catch (error) {
+            console.error('Error al cargar ventas:', error);
+            alert('Error al cargar el historial de ventas');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Cálculos de estadísticas con filtros
     const ventasFiltradas = ventas.filter(venta => {
         const cumpleMetodo = filtros.metodoPago === 'Todos' || venta.metodoPago === filtros.metodoPago;
         const cumpleVendedor = filtros.vendedor === 'Todos' || venta.vendedor === filtros.vendedor;
-        return cumpleMetodo && cumpleVendedor;
+
+        let cumpleFecha = true;
+        if (filtros.fechaInicio) {
+            cumpleFecha = cumpleFecha && new Date(venta.fecha) >= new Date(filtros.fechaInicio);
+        }
+        if (filtros.fechaFin) {
+            cumpleFecha = cumpleFecha && new Date(venta.fecha) <= new Date(filtros.fechaFin);
+        }
+
+        return cumpleMetodo && cumpleVendedor && cumpleFecha;
     });
 
     const totalVentas = ventasFiltradas.length;
-    const ingresosTotales = ventasFiltradas.reduce((sum, venta) => sum + venta.total, 0);
+    const ingresosTotales = ventasFiltradas.reduce((sum, venta) => sum + parseFloat(venta.total), 0);
     const ventaPromedio = totalVentas > 0 ? ingresosTotales / totalVentas : 0;
 
     // Datos para gráfica de métodos de pago
     const metodosPago = ventasFiltradas.reduce((acc, venta) => {
-        acc[venta.metodoPago] = (acc[venta.metodoPago] || 0) + venta.total;
+        acc[venta.metodoPago] = (acc[venta.metodoPago] || 0) + parseFloat(venta.total);
         return acc;
     }, {});
 
     // Datos para gráfica de ingresos por día
     const ingresosPorDia = ventasFiltradas.reduce((acc, venta) => {
-        const fecha = new Date(venta.fecha).toLocaleDateString();
-        acc[fecha] = (acc[fecha] || 0) + venta.total;
+        const fecha = new Date(venta.fecha).toLocaleDateString('es-MX');
+        acc[fecha] = (acc[fecha] || 0) + parseFloat(venta.total);
         return acc;
     }, {});
 
     const exportarReporte = () => {
-        // Función para exportar reporte
-        console.log('Exportando reporte...');
+        const reporte = ventasFiltradas.map(venta => ({
+            ID: venta.id,
+            Fecha: new Date(venta.fecha).toLocaleString('es-MX'),
+            Vendedor: venta.vendedor,
+            'Método de Pago': venta.metodoPago,
+            Total: `$${parseFloat(venta.total).toFixed(2)}`,
+            Productos: venta.productos?.map(p =>
+                `${p.nombre} x${p.cantidad} ($${p.precio})`
+            ).join(', ') || ''
+        }));
+
+        // Convertir a CSV
+        const headers = Object.keys(reporte[0] || {});
+        const csv = [
+            headers.join(','),
+            ...reporte.map(row =>
+                headers.map(header => {
+                    const value = row[header] || '';
+                    return `"${value}"`;
+                }).join(',')
+            )
+        ].join('\n');
+
+        // Descargar archivo
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `historial-ventas-${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
+
+    const limpiarFiltros = () => {
+        setFiltros({
+            metodoPago: 'Todos',
+            vendedor: 'Todos',
+            fechaInicio: '',
+            fechaFin: ''
+        });
+    };
+
+    const getNombreMetodo = (metodo) => {
+        const nombres = {
+            'efectivo': '💵 Efectivo',
+            'tarjeta': '💳 Tarjeta',
+            'transferencia': '🏦 Transferencia',
+            'cash': '💵 Efectivo',
+            'card': '💳 Tarjeta',
+            'transfer': '🏦 Transferencia'
+        };
+        return nombres[metodo] || metodo;
+    };
+
+    if (loading) {
+        return (
+            <div className="historial-container">
+                <div style={{ textAlign: 'center', padding: '50px' }}>
+                    <h2>Cargando historial...</h2>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="historial-container">
@@ -85,9 +162,9 @@ function Historial() {
                             onChange={(e) => setFiltros({ ...filtros, metodoPago: e.target.value })}
                         >
                             <option value="Todos">Todos</option>
-                            <option value="cash">Efectivo</option>
-                            <option value="card">Tarjeta</option>
-                            <option value="transfer">Transferencia</option>
+                            <option value="efectivo">Efectivo</option>
+                            <option value="tarjeta">Tarjeta</option>
+                            <option value="transferencia">Transferencia</option>
                         </select>
                     </div>
 
@@ -98,11 +175,40 @@ function Historial() {
                             onChange={(e) => setFiltros({ ...filtros, vendedor: e.target.value })}
                         >
                             <option value="Todos">Todos</option>
-                            <option value="pepe">Pepe</option>
-                            <option value="juan">Juan</option>
-                            <option value="maria">María</option>
+                            {vendedoresUnicos.map(vendedor => (
+                                <option key={vendedor} value={vendedor}>
+                                    {vendedor}
+                                </option>
+                            ))}
                         </select>
                     </div>
+
+                    <div className="filtro-item">
+                        <label>Fecha Inicio</label>
+                        <input
+                            type="date"
+                            value={filtros.fechaInicio}
+                            onChange={(e) => setFiltros({ ...filtros, fechaInicio: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="filtro-item">
+                        <label>Fecha Fin</label>
+                        <input
+                            type="date"
+                            value={filtros.fechaFin}
+                            onChange={(e) => setFiltros({ ...filtros, fechaFin: e.target.value })}
+                        />
+                    </div>
+                </div>
+
+                <div className="filtros-acciones">
+                    <button onClick={limpiarFiltros} className="btn-limpiar-filtros">
+                        🔄 Limpiar Filtros
+                    </button>
+                    <button onClick={cargarVentas} className="btn-recargar">
+                        ↻ Recargar
+                    </button>
                 </div>
             </div>
 
@@ -117,7 +223,7 @@ function Historial() {
                 <div className="stat-card">
                     <h4>Ingresos Totales</h4>
                     <div className="stat-value">${ingresosTotales.toFixed(2)}</div>
-                    <div className="stat-label">en transacción</div>
+                    <div className="stat-label">en ventas</div>
                 </div>
 
                 <div className="stat-card">
@@ -132,31 +238,59 @@ function Historial() {
                 <div className="grafica-card">
                     <h3>Ingresos por Día</h3>
                     <div className="chart-container">
-                        <div className="bar-chart">
-                            {Object.entries(ingresosPorDia).map(([fecha, monto]) => (
-                                <div key={fecha} className="bar-wrapper">
-                                    <div
-                                        className="bar"
-                                        style={{ height: `${(monto / Math.max(...Object.values(ingresosPorDia))) * 100}%` }}
-                                    ></div>
-                                    <span className="bar-label">{fecha}</span>
-                                </div>
-                            ))}
-                        </div>
+                        {Object.keys(ingresosPorDia).length > 0 ? (
+                            <div className="bar-chart">
+                                {Object.entries(ingresosPorDia).map(([fecha, monto]) => (
+                                    <div key={fecha} className="bar-wrapper">
+                                        <div
+                                            className="bar"
+                                            style={{
+                                                height: `${(monto / Math.max(...Object.values(ingresosPorDia))) * 100}%`
+                                            }}
+                                        >
+                                            <span className="bar-value">${monto.toFixed(0)}</span>
+                                        </div>
+                                        <span className="bar-label">{fecha}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p style={{ textAlign: 'center', padding: '20px' }}>
+                                No hay datos para mostrar
+                            </p>
+                        )}
                     </div>
                 </div>
 
                 <div className="grafica-card">
                     <h3>Métodos de Pago</h3>
                     <div className="chart-container">
-                        <div className="pie-chart">
-                            <svg viewBox="0 0 200 200">
-                                <circle cx="100" cy="100" r="80" fill="#8B7FD9" />
-                            </svg>
-                            <div className="pie-label">
-                                Efectivo: ${metodosPago.cash?.toFixed(2) || '0.00'}
+                        {Object.keys(metodosPago).length > 0 ? (
+                            <div className="metodos-lista">
+                                {Object.entries(metodosPago).map(([metodo, total]) => (
+                                    <div key={metodo} className="metodo-item">
+                                        <span className="metodo-nombre">
+                                            {getNombreMetodo(metodo)}
+                                        </span>
+                                        <span className="metodo-monto">
+                                            ${total.toFixed(2)}
+                                        </span>
+                                        <div className="metodo-barra">
+                                            <div
+                                                className="metodo-barra-fill"
+                                                style={{
+                                                    width: `${(total / ingresosTotales) * 100}%`
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                        </div>
+                        ) : (
+                            <p style={{ textAlign: 'center', padding: '20px' }}>
+                                No hay datos para mostrar
+                            </p>
+                        )}
                     </div>
                 </div>
             </div>
@@ -166,41 +300,60 @@ function Historial() {
                 <h3>Historial Detallado</h3>
                 <p className="ventas-count">{totalVentas} ventas</p>
 
-                <div className="ventas-lista">
-                    {ventasFiltradas.map(venta => (
-                        <div key={venta.id} className="venta-item">
-                            <div className="venta-header">
-                                <div className="venta-info">
-                                    <h4>{venta.id}</h4>
-                                    <span className="venta-badge">{venta.vendedor}</span>
-                                    <span className={`metodo-badge ${venta.metodoPago}`}>
-                                        {venta.metodoPago === 'cash' ? '💵 cash' : venta.metodoPago}
-                                    </span>
+                {ventasFiltradas.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px' }}>
+                        <p>No hay ventas que coincidan con los filtros seleccionados</p>
+                    </div>
+                ) : (
+                    <div className="ventas-lista">
+                        {ventasFiltradas.map(venta => (
+                            <div key={venta.id} className="venta-item">
+                                <div className="venta-header">
+                                    <div className="venta-info">
+                                        <h4>#{venta.id}</h4>
+                                        <span className="venta-badge">{venta.vendedor}</span>
+                                        <span className={`metodo-badge ${venta.metodoPago}`}>
+                                            {getNombreMetodo(venta.metodoPago)}
+                                        </span>
+                                    </div>
+                                    <div className="venta-total">${parseFloat(venta.total).toFixed(2)}</div>
                                 </div>
-                                <div className="venta-total">${venta.total.toFixed(2)}</div>
-                            </div>
 
-                            <div className="venta-fecha">{venta.fecha}</div>
+                                <div className="venta-fecha">
+                                    {new Date(venta.fecha).toLocaleString('es-MX')}
+                                </div>
 
-                            <div className="venta-productos">
-                                <strong>Productos:</strong>
-                                <ul>
-                                    {venta.productos.map((prod, idx) => (
-                                        <li key={idx}>
-                                            {prod.nombre} - ${prod.precio.toFixed(2)}
-                                        </li>
-                                    ))}
-                                </ul>
+                                <div className="venta-productos">
+                                    <strong>Productos:</strong>
+                                    <ul>
+                                        {venta.productos?.map((prod, idx) => (
+                                            <li key={idx}>
+                                                {prod.nombre} × {prod.cantidad} - ${parseFloat(prod.precio).toFixed(2)}
+                                                {' '}(Total: ${(parseFloat(prod.precio) * prod.cantidad).toFixed(2)})
+                                            </li>
+                                        )) || <li>Sin productos</li>}
+                                    </ul>
+                                </div>
+
+                                {venta.notas && (
+                                    <div className="venta-notas">
+                                        <strong>Notas:</strong> {venta.notas}
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Botón Exportar */}
             <div className="exportar-section">
-                <button onClick={exportarReporte} className="btn-exportar">
-                    <span>📥</span> Exportar Reporte
+                <button
+                    onClick={exportarReporte}
+                    className="btn-exportar"
+                    disabled={ventasFiltradas.length === 0}
+                >
+                    <span>📥</span> Exportar Reporte CSV
                 </button>
             </div>
         </div>

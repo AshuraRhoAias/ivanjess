@@ -2,6 +2,7 @@ import React from "react";
 import '@/Styles/Carrito.css';
 import { useCart } from "@/Context/CartContext";
 import { BtnNav } from "@/Utils/Header";
+import Image from "next/image";
 
 export default function Carrito({ route, setRoute }) {
     const { cart, updateQuantity, removeFromCart, clearCart, getTotal, getTotalItems } = useCart();
@@ -19,7 +20,7 @@ export default function Carrito({ route, setRoute }) {
         <div className="carrito-container">
             {cart.map(item => (
                 <div key={item.idname} className="carrito-item">
-                    <img src={item.img} alt={item.name} />
+                    <Image src={item.img} alt={item.name} />
 
                     <div className="item-info">
                         <h3>{item.name}</h3>

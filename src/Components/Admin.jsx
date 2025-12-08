@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+'use client'
+import React, { useState, useEffect } from 'react';
 import '@/Styles/Admin.css';
 import { Cards } from '@/Utils/Cards';
 import { productsAPI } from '@/Utils/ProductsData';
@@ -6,17 +7,30 @@ import { productsAPI } from '@/Utils/ProductsData';
 function Admin() {
     const [modalAbierto, setModalAbierto] = useState(false);
     const [productoEditando, setProductoEditando] = useState(null);
+    const [productos, setProductos] = useState([]);
     const [cameraMode, setCameraMode] = useState(false);
     const [stream, setStream] = useState(null);
+    const [uploadingImage, setUploadingImage] = useState(false);
     const [nuevoProducto, setNuevoProducto] = useState({
         name: '',
-        venta: 0,
-        compra: 0,
+        venta: '',
+        compra: '',
         stk: 0,
         img: ''
     });
 
+    useEffect(() => {
+        cargarProductos();
+    }, []);
 
+    const cargarProductos = async () => {
+        try {
+            const data = await productsAPI.getAll();
+            setProductos(data);
+        } catch (error) {
+            console.error('Error cargando productos:', error);
+        }
+    };
 
     const abrirModal = (producto = null) => {
         if (producto) {
@@ -26,9 +40,9 @@ function Admin() {
             setProductoEditando(null);
             setNuevoProducto({
                 name: '',
-                venta: 0,
-                compra: 0,
-                stk: 0,
+                venta: '',
+                compra: '',
+                stk: '',
                 img: ''
             });
         }
@@ -46,7 +60,7 @@ function Admin() {
         const { name, value } = e.target;
         setNuevoProducto({
             ...nuevoProducto,
-            [name]: name === 'name' || name === 'img' ? value : parseFloat(value) || 0
+            [name]: name === 'name' || name === 'img' ? value : parseFloat(value) || ''
         });
     };
 
@@ -77,7 +91,22 @@ function Admin() {
         }
     };
 
-    const tomarFoto = () => {
+    // ✅ Subir imagen al servidor
+    const subirImagen = async (base64Image) => {
+        try {
+            setUploadingImage(true);
+            const response = await productsAPI.uploadImage(base64Image);
+            return response.encryptedPath; // Ruta cifrada desde el servidor
+        } catch (error) {
+            console.error('Error al subir imagen:', error);
+            alert('Error al subir la imagen');
+            return null;
+        } finally {
+            setUploadingImage(false);
+        }
+    };
+
+    const tomarFoto = async () => {
         const video = document.getElementById('video-camera');
         const canvas = document.getElementById('canvas-foto');
 
@@ -87,58 +116,68 @@ function Admin() {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0);
 
-            const imagenBase64 = canvas.toDataURL('image/jpeg');
-            setNuevoProducto({
-                ...nuevoProducto,
-                img: imagenBase64
-            });
+            const imagenBase64 = canvas.toDataURL('image/jpeg', 0.8);
+            
+            // ✅ Subir imagen al servidor
+            const encryptedPath = await subirImagen(imagenBase64);
+            
+            if (encryptedPath) {
+                setNuevoProducto({
+                    ...nuevoProducto,
+                    img: encryptedPath // Guardar ruta cifrada
+                });
+            }
 
             setCameraMode(false);
             detenerCamara();
         }
     };
 
-    const handleFileSelect = (e) => {
+    const handleFileSelect = async (e) => {
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
-            reader.onloadend = () => {
-                setNuevoProducto({
-                    ...nuevoProducto,
-                    img: reader.result
-                });
+            reader.onloadend = async () => {
+                // ✅ Subir imagen al servidor
+                const encryptedPath = await subirImagen(reader.result);
+                
+                if (encryptedPath) {
+                    setNuevoProducto({
+                        ...nuevoProducto,
+                        img: encryptedPath // Guardar ruta cifrada
+                    });
+                }
             };
             reader.readAsDataURL(file);
         }
     };
 
-    useEffect(() => {
-        cargarProductos;
-    }, []);
-
-    const cargarProductos = async () => {
-        try {
-            const data = await productsAPI.getAll();
-            setProductos(data);
-        } catch (error) {
-            console.error('Error cargando productos:', error);
-        }
-    };
-
     const guardarProducto = async () => {
         try {
+            // Validaciones
+            if (!nuevoProducto.name.trim()) {
+                alert('El nombre del producto es requerido');
+                return;
+            }
+            if (!nuevoProducto.venta || nuevoProducto.venta <= 0) {
+                alert('El precio de venta debe ser mayor a 0');
+                return;
+            }
+            if (!nuevoProducto.compra || nuevoProducto.compra <= 0) {
+                alert('El precio de compra debe ser mayor a 0');
+                return;
+            }
+
             if (productoEditando) {
                 // Editar
                 await productsAPI.update(productoEditando.idname, nuevoProducto);
-                setProductos(productos.map(p =>
-                    p.idname === productoEditando.idname ? { ...nuevoProducto, idname: p.idname } : p
-                ));
             } else {
                 // Crear nuevo
-                const productoCreado = await productsAPI.create(nuevoProducto);
-                setProductos([...productos, productoCreado]);
+                await productsAPI.create(nuevoProducto);
             }
+            
             cerrarModal();
+            cargarProductos(); // Recargar productos
         } catch (error) {
             alert('Error al guardar producto: ' + error.message);
         }
@@ -148,7 +187,7 @@ function Admin() {
         if (window.confirm('¿Estás seguro de eliminar este producto?')) {
             try {
                 await productsAPI.delete(idname);
-                setProductos(productos.filter(p => p.idname !== idname));
+                cargarProductos();
             } catch (error) {
                 alert('Error al eliminar producto: ' + error.message);
             }
@@ -206,7 +245,7 @@ function Admin() {
                                         name="venta"
                                         value={nuevoProducto.venta}
                                         onChange={handleInputChange}
-                                        placeholder="0"
+                                        placeholder="0.00"
                                         step="0.01"
                                     />
                                 </div>
@@ -218,7 +257,7 @@ function Admin() {
                                         name="compra"
                                         value={nuevoProducto.compra}
                                         onChange={handleInputChange}
-                                        placeholder="0"
+                                        placeholder="0.00"
                                         step="0.01"
                                     />
                                 </div>
@@ -243,18 +282,26 @@ function Admin() {
                                         <button
                                             onClick={iniciarCamara}
                                             className="btn-opcion-imagen"
+                                            disabled={uploadingImage}
                                         >
                                             📷 Tomar Foto
                                         </button>
-                                        <label className="btn-opcion-imagen">
+                                        <label className={`btn-opcion-imagen ${uploadingImage ? 'disabled' : ''}`}>
                                             🖼️ Seleccionar Archivo
                                             <input
                                                 type="file"
                                                 accept="image/*"
                                                 onChange={handleFileSelect}
                                                 style={{ display: 'none' }}
+                                                disabled={uploadingImage}
                                             />
                                         </label>
+                                    </div>
+                                )}
+
+                                {uploadingImage && (
+                                    <div className="uploading-message">
+                                        <p>⏳ Subiendo imagen...</p>
                                     </div>
                                 )}
 
@@ -267,7 +314,11 @@ function Admin() {
                                             className="video-preview"
                                         ></video>
                                         <div className="camera-controles">
-                                            <button onClick={tomarFoto} className="btn-tomar-foto">
+                                            <button 
+                                                onClick={tomarFoto} 
+                                                className="btn-tomar-foto"
+                                                disabled={uploadingImage}
+                                            >
                                                 📸 Capturar
                                             </button>
                                             <button
@@ -285,7 +336,12 @@ function Admin() {
 
                                 {nuevoProducto.img && !cameraMode && (
                                     <div className="imagen-preview">
-                                        <img src={nuevoProducto.img} alt="Preview" />
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                            src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/products/image/${nuevoProducto.img}`}
+                                            alt="Preview"
+                                            style={{ width: '100%', height: 'auto', maxWidth: '300px' }}
+                                        />
                                         <button
                                             onClick={() => setNuevoProducto({ ...nuevoProducto, img: '' })}
                                             className="btn-quitar-imagen"
@@ -301,7 +357,7 @@ function Admin() {
                                         name="img"
                                         value={nuevoProducto.img}
                                         onChange={handleInputChange}
-                                        placeholder="https://..."
+                                        placeholder="https://... o deja vacío para subir archivo"
                                         className="url-input"
                                     />
                                 )}
@@ -311,7 +367,11 @@ function Admin() {
                         </div>
 
                         <div className="modal-footer">
-                            <button onClick={guardarProducto} className="btn-crear">
+                            <button 
+                                onClick={guardarProducto} 
+                                className="btn-crear"
+                                disabled={uploadingImage}
+                            >
                                 {productoEditando ? 'Guardar Cambios' : 'Crear Producto'}
                             </button>
                         </div>

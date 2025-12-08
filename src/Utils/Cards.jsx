@@ -7,6 +7,11 @@ export function Cards({ product, onAddToCart, showAdminButtons, onEdit, onDelete
         }
     };
 
+    // ✅ Construir URL completa para la imagen
+    const imageUrl = img && !img.startsWith('http')
+        ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}${img}`
+        : img || 'https://via.placeholder.com/300x200?text=Sin+Imagen';
+
     return (
         <section className="card">
             <article className="card-header">
@@ -16,7 +21,8 @@ export function Cards({ product, onAddToCart, showAdminButtons, onEdit, onDelete
 
             <span className="stk">{stk} {showAdminButtons ? 'stock' : 'Stock'}</span>
 
-            <img src={img} alt={name} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imageUrl} alt={name} />
 
             <article className="card-footer">
                 <p>precio</p>

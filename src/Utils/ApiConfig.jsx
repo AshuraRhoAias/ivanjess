@@ -3,7 +3,7 @@
  * Cambiar API_BASE_URL según tu servidor
  */
 
-export const API_BASE_URL = 'https://miscompras.es.com';
+export const API_BASE_URL = 'http://localhost:4000';
 
 export const API_ENDPOINTS = {
     // Auth
@@ -14,6 +14,8 @@ export const API_ENDPOINTS = {
     // Productos
     PRODUCTS: '/api/products',
     PRODUCT_BY_ID: (id) => `/api/products/${id}`,
+    UPLOAD_IMAGE: '/api/products/upload-image',
+    GET_IMAGE: (encryptedPath) => `/api/products/image/${encryptedPath}`,
 
     // Ventas
     SALES: '/api/sales',
