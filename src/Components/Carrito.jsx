@@ -2,7 +2,6 @@ import React from "react";
 import '@/Styles/Carrito.css';
 import { useCart } from "@/Context/CartContext";
 import { BtnNav } from "@/Utils/Header";
-import Image from "next/image";
 
 export default function Carrito({ route, setRoute }) {
     const { cart, updateQuantity, removeFromCart, clearCart, getTotal, getTotalItems } = useCart();
@@ -18,9 +17,15 @@ export default function Carrito({ route, setRoute }) {
 
     return (
         <div className="carrito-container">
-            {cart.map(item => (
+            {cart.map(item => {
+                const imageUrl = item.img && !item.img.startsWith('http')
+                    ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}${item.img}`
+                    : item.img || 'https://via.placeholder.com/300x200?text=Sin+Imagen';
+
+                return (
                 <div key={item.idname} className="carrito-item">
-                    <Image src={item.img} alt={item.name} />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imageUrl} alt={item.name} />
 
                     <div className="item-info">
                         <h3>{item.name}</h3>
@@ -65,7 +70,8 @@ export default function Carrito({ route, setRoute }) {
                         </button>
                     </div>
                 </div>
-            ))}
+                );
+            })}
 
             <div className="resumen-carrito">
                 <h2>Resumen del Carrito</h2>

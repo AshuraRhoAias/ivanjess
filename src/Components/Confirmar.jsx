@@ -9,42 +9,31 @@ function Confirmar() {
     const [metodoPago, setMetodoPago] = useState('efectivo');
     const [notas, setNotas] = useState('');
 
-    const handleConfirmar = () => {
-        const handleConfirmar = async () => {
-            if (!vendedor.trim()) {
-                alert('Por favor ingresa el nombre del vendedor');
-                return;
-            }
+    const handleConfirmar = async () => {
+        if (!vendedor.trim()) {
+            alert('Por favor ingresa el nombre del vendedor');
+            return;
+        }
 
-            const venta = {
-                productos: cart,
-                vendedor,
-                metodoPago,
-                notas,
-                total: getTotal(),
-                fecha: new Date().toISOString()
-            };
-
-            try {
-                // 🆕 Enviar a API
-                await apiClient.post(API_ENDPOINTS.SALES, venta);
-
-                alert('¡Venta confirmada exitosamente!');
-                clearCart();
-                setVendedor('');
-                setNotas('');
-            } catch (error) {
-                alert('Error al confirmar venta: ' + error.message);
-            }
+        const venta = {
+            productos: cart,
+            vendedor,
+            metodoPago,
+            notas,
+            total: getTotal(),
+            fecha: new Date().toISOString()
         };
 
-        console.log('Venta confirmada:', venta);
-        // Aquí puedes guardar la venta en tu base de datos o sistema
+        try {
+            await apiClient.post(API_ENDPOINTS.SALES, venta);
 
-        alert('¡Venta confirmada exitosamente!');
-        clearCart();
-        setVendedor('');
-        setNotas('');
+            alert('¡Venta confirmada exitosamente!');
+            clearCart();
+            setVendedor('');
+            setNotas('');
+        } catch (error) {
+            alert('Error al confirmar venta: ' + error.message);
+        }
     };
 
     const handleCancelar = () => {
