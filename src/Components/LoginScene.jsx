@@ -112,11 +112,12 @@ export default function LoginScene() {
         };
         window.addEventListener("mousemove", handleMouseMove);
 
-        const clock = new THREE.Clock();
+        const timer = new THREE.Timer();
         let frameId;
 
         const animate = () => {
-            const t = clock.getElapsedTime();
+            timer.update();
+            const t = timer.getElapsed();
 
             if (!prefersReducedMotion) {
                 shapes.forEach((mesh) => {
