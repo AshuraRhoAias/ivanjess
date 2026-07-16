@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useCart } from "@/Context/CartContext";
 import '@/Styles/Confirmar.css';
-import { apiClient, API_ENDPOINTS } from '@/Utils/ApiConfig';
+import { supabase } from '@/Utils/supabaseClient';
 
 function Confirmar() {
     const { cart, getTotal, getTotalItems, clearCart } = useCart();
@@ -16,16 +16,22 @@ function Confirmar() {
         }
 
         const venta = {
-            productos: cart,
+            productos: cart.map(item => ({
+                nombre: item.name,
+                cantidad: item.quantity,
+                precio: item.venta,
+                precioBase: item.compra,
+            })),
             vendedor,
-            metodoPago,
+            metodo_pago: metodoPago,
             notas,
             total: getTotal(),
             fecha: new Date().toISOString()
         };
 
         try {
-            await apiClient.post(API_ENDPOINTS.SALES, venta);
+            const { error } = await supabase.from('sales').insert(venta);
+            if (error) throw new Error(error.message);
 
             alert('¡Venta confirmada exitosamente!');
             clearCart();
