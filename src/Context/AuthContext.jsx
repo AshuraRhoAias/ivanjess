@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiClient, API_ENDPOINTS } from '@/Utils/ApiConfig';
+import { supabase } from '@/Utils/supabaseClient';
 
 const AuthContext = createContext();
 
@@ -9,58 +9,52 @@ export function AuthProvider({ children }) {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
 
     useEffect(() => {
-        checkAuth();
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setUser(session?.user ?? null);
+            setIsAuthenticated(!!session);
+            setLoading(false);
+        });
 
-        // Escuchar sesión expirada
-        const handleUnauthorized = () => {
-            handleLogout();
-        };
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            (_event, session) => {
+                setUser(session?.user ?? null);
+                setIsAuthenticated(!!session);
+                setLoading(false);
+            }
+        );
 
-        window.addEventListener('auth:unauthorized', handleUnauthorized);
-        return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+        return () => subscription.unsubscribe();
     }, []);
 
-    const checkAuth = async () => {
-        try {
-            const userData = await apiClient.get(API_ENDPOINTS.CHECK_AUTH);
-            setUser(userData);
-            setIsAuthenticated(true);
-        } catch (error) {
-            setUser(null);
-            setIsAuthenticated(false);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     const login = async (username, password) => {
-        try {
-            const response = await apiClient.post(API_ENDPOINTS.LOGIN, { username, password });
-            setUser(response.user);
-            setIsAuthenticated(true);
-            return response;
-        } catch (error) {
-            throw error;
+        const { data: profile, error: lookupError } = await supabase
+            .from('profiles')
+            .select('email')
+            .eq('username', username.trim())
+            .maybeSingle();
+
+        if (lookupError || !profile) {
+            throw new Error('Usuario o contraseña incorrectos');
         }
+
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: profile.email,
+            password,
+        });
+
+        if (error) {
+            throw new Error('Usuario o contraseña incorrectos');
+        }
+
+        return data;
     };
 
     const logout = async () => {
-        try {
-            await apiClient.post(API_ENDPOINTS.LOGOUT);
-        } catch (error) {
-            console.error('Error en logout:', error);
-        } finally {
-            handleLogout();
-        }
-    };
-
-    const handleLogout = () => {
-        setUser(null);
-        setIsAuthenticated(false);
+        await supabase.auth.signOut();
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, isAuthenticated, login, logout, checkAuth }}>
+        <AuthContext.Provider value={{ user, loading, isAuthenticated, login, logout }}>
             {children}
         </AuthContext.Provider>
     );

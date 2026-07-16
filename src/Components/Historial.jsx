@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react';
 import '@/Styles/Historial.css';
-import { apiClient, API_ENDPOINTS } from '@/Utils/ApiConfig';
+import { supabase } from '@/Utils/supabaseClient';
 
 function Historial() {
     const [ventas, setVentas] = useState([]);
@@ -21,11 +21,17 @@ function Historial() {
     const cargarVentas = async () => {
         try {
             setLoading(true);
-            const data = await apiClient.get(API_ENDPOINTS.SALES_HISTORY);
+            const { data, error } = await supabase
+                .from('sales')
+                .select('*')
+                .order('fecha', { ascending: false });
 
-            // Parsear productos si vienen como JSON string
+            if (error) throw new Error(error.message);
+
+            // Normaliza metodo_pago (columna) -> metodoPago (usado en toda la UI)
             const ventasFormateadas = data.map(venta => ({
                 ...venta,
+                metodoPago: venta.metodo_pago,
                 productos: typeof venta.productos === 'string'
                     ? JSON.parse(venta.productos)
                     : venta.productos

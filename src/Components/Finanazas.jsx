@@ -1,54 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import '@/Styles/finanzas.css';
+import { supabase } from '@/Utils/supabaseClient';
 
 function Finanzas() {
-    // Función helper para inicializar ventas e ingresos
-    const inicializarVentasEIngresos = () => {
-        const ventasGuardadas = localStorage.getItem('ventasDelDia');
-        if (ventasGuardadas) {
-            const ventas = JSON.parse(ventasGuardadas);
+    // Estados para ingresos
+    const [ingresos, setIngresos] = useState({ efectivo: 0, transferencia: 0, tarjeta: 0, otros: 0 });
 
-            // Calcular ingresos por método de pago
-            const totales = {
-                efectivo: 0,
-                transferencia: 0,
-                tarjeta: 0,
-                otros: 0
-            };
-
-            ventas.forEach(venta => {
-                const metodoPago = venta.metodoPago?.toLowerCase() || 'otros';
-                const total = parseFloat(venta.total) || 0;
-
-                if (totales.hasOwnProperty(metodoPago)) {
-                    totales[metodoPago] += total;
-                } else {
-                    totales.otros += total;
-                }
-            });
-
-            return { ventas, ingresos: totales };
-        }
-
-        return {
-            ventas: [],
-            ingresos: { efectivo: 0, transferencia: 0, tarjeta: 0, otros: 0 }
-        };
-    };
-
-    // Función helper para inicializar historial
-    const inicializarHistorial = () => {
-        const historial = localStorage.getItem('historialFinanzas');
-        return historial ? JSON.parse(historial) : [];
-    };
-
-    // Inicializar estados con datos de localStorage
-    const datosIniciales = inicializarVentasEIngresos();
-
-    // Estados para ingresos - inicializados con datos de localStorage
-    const [ingresos, setIngresos] = useState(datosIniciales.ingresos);
-
-    // Estados para gastos
+    // Estados para gastos (persistidos en la tabla `gastos`, del día en curso)
     const [gastos, setGastos] = useState([]);
     const [nuevoGasto, setNuevoGasto] = useState({
         producto: '',
@@ -60,11 +18,11 @@ function Finanzas() {
     const [inicioCaja, setInicioCaja] = useState(0);
     const [cierreCaja, setCierreCaja] = useState(0);
 
-    // Estados para ventas del día - inicializados con datos de localStorage
-    const [ventasDelDia, setVentasDelDia] = useState(datosIniciales.ventas);
+    // Estados para ventas del día (leídas de la tabla `sales`)
+    const [ventasDelDia, setVentasDelDia] = useState([]);
 
-    // Estados para historial - inicializados con datos de localStorage
-    const [historialDias, setHistorialDias] = useState(inicializarHistorial);
+    // Estados para historial (leído de la tabla `finance_days`)
+    const [historialDias, setHistorialDias] = useState([]);
 
     // Estados para reportes mensuales
     const [mostrarReportes, setMostrarReportes] = useState(false);
@@ -75,6 +33,14 @@ function Finanzas() {
     // Referencias
     const fileInputRef = useRef(null);
     const cameraInputRef = useRef(null);
+
+    /* eslint-disable react-hooks/exhaustive-deps */
+    useEffect(() => {
+        cargarDatosDelDia();
+        cargarGastos();
+        cargarHistorial();
+    }, []);
+    /* eslint-enable react-hooks/exhaustive-deps */
 
     // Función para calcular ingresos por método de pago (para usar en otros lugares)
     const calcularIngresosPorMetodo = (ventas) => {
@@ -99,29 +65,69 @@ function Finanzas() {
         setIngresos(totales);
     };
 
-    // Función para recargar ventas del día (para usar en botones)
-    const cargarDatosDelDia = () => {
-        const ventasGuardadas = localStorage.getItem('ventasDelDia');
-        if (ventasGuardadas) {
-            const ventas = JSON.parse(ventasGuardadas);
-            setVentasDelDia(ventas);
-            calcularIngresosPorMetodo(ventas);
+    // Función para recargar las ventas de hoy desde Supabase (para usar en botones)
+    const cargarDatosDelDia = async () => {
+        const inicioDia = new Date();
+        inicioDia.setHours(0, 0, 0, 0);
+
+        const { data, error } = await supabase
+            .from('sales')
+            .select('*')
+            .gte('fecha', inicioDia.toISOString())
+            .order('fecha', { ascending: false });
+
+        if (error) {
+            console.error('Error al cargar ventas del día:', error);
+            return;
         }
+
+        const ventas = data.map(venta => ({ ...venta, metodoPago: venta.metodo_pago }));
+        setVentasDelDia(ventas);
+        calcularIngresosPorMetodo(ventas);
+    };
+
+    // Función para recargar los gastos del día en curso desde Supabase
+    const cargarGastos = async () => {
+        const { data, error } = await supabase
+            .from('gastos')
+            .select('*')
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('Error al cargar gastos:', error);
+            return;
+        }
+
+        setGastos(data);
     };
 
     // Función para recargar historial (para usar en botones)
-    const cargarHistorial = () => {
-        const historial = localStorage.getItem('historialFinanzas');
-        if (historial) {
-            setHistorialDias(JSON.parse(historial));
+    const cargarHistorial = async () => {
+        const { data, error } = await supabase
+            .from('finance_days')
+            .select('*')
+            .order('fecha', { ascending: false });
+
+        if (error) {
+            console.error('Error al cargar historial de finanzas:', error);
+            return;
         }
+
+        setHistorialDias(data.map(dia => ({
+            ...dia,
+            fechaLegible: dia.fecha_legible,
+            inicioCaja: dia.inicio_caja,
+            cierreCaja: dia.cierre_caja,
+        })));
     };
 
-    // Guardar día completo
-    const guardarDiaCompleto = () => {
+    // Guardar día completo: archiva un snapshot en `finance_days` y limpia
+    // los gastos del día en curso. Las ventas ya confirmadas permanecen
+    // guardadas de forma permanente en la tabla `sales` (no se borran).
+    const guardarDiaCompleto = async () => {
         const diaCompleto = {
             fecha: new Date().toISOString(),
-            fechaLegible: new Date().toLocaleDateString('es-MX', {
+            fecha_legible: new Date().toLocaleDateString('es-MX', {
                 weekday: 'long',
                 year: 'numeric',
                 month: 'long',
@@ -130,8 +136,8 @@ function Finanzas() {
             ingresos: { ...ingresos },
             gastos: [...gastos],
             ventas: [...ventasDelDia],
-            inicioCaja,
-            cierreCaja,
+            inicio_caja: inicioCaja,
+            cierre_caja: cierreCaja,
             totales: {
                 ingresos: getTotalIngresos(),
                 gastos: getTotalGastos(),
@@ -141,22 +147,31 @@ function Finanzas() {
             }
         };
 
-        const historial = [...historialDias, diaCompleto];
-        setHistorialDias(historial);
-        localStorage.setItem('historialFinanzas', JSON.stringify(historial));
+        try {
+            const { error: insertError } = await supabase.from('finance_days').insert(diaCompleto);
+            if (insertError) throw new Error(insertError.message);
 
-        // Limpiar datos del día
-        limpiarDia();
-        alert('Día guardado correctamente');
+            if (gastos.length > 0) {
+                const { error: deleteError } = await supabase
+                    .from('gastos')
+                    .delete()
+                    .in('id', gastos.map(g => g.id));
+                if (deleteError) throw new Error(deleteError.message);
+            }
+
+            await cargarHistorial();
+            limpiarDia();
+            alert('Día guardado correctamente');
+        } catch (error) {
+            alert('Error al guardar el día: ' + error.message);
+        }
     };
 
     const limpiarDia = () => {
         setIngresos({ efectivo: 0, transferencia: 0, tarjeta: 0, otros: 0 });
         setGastos([]);
-        setVentasDelDia([]);
         setInicioCaja(0);
         setCierreCaja(0);
-        localStorage.removeItem('ventasDelDia');
     };
 
     // Manejo de ingresos
@@ -193,27 +208,41 @@ function Finanzas() {
         }
     };
 
-    const agregarGasto = () => {
-        if (nuevoGasto.producto && nuevoGasto.precio) {
-            setGastos([
-                ...gastos,
-                {
-                    ...nuevoGasto,
-                    id: Date.now(),
-                    fecha: new Date().toLocaleString()
-                }
-            ]);
-            setNuevoGasto({
-                producto: '',
-                precio: '',
-                foto: null
-            });
-            if (fileInputRef.current) fileInputRef.current.value = '';
-            if (cameraInputRef.current) cameraInputRef.current.value = '';
+    const agregarGasto = async () => {
+        if (!nuevoGasto.producto || !nuevoGasto.precio) return;
+
+        const { data, error } = await supabase
+            .from('gastos')
+            .insert({
+                producto: nuevoGasto.producto,
+                precio: parseFloat(nuevoGasto.precio) || 0,
+                foto: nuevoGasto.foto,
+                fecha: new Date().toLocaleString()
+            })
+            .select()
+            .single();
+
+        if (error) {
+            alert('Error al agregar el gasto: ' + error.message);
+            return;
         }
+
+        setGastos([...gastos, data]);
+        setNuevoGasto({
+            producto: '',
+            precio: '',
+            foto: null
+        });
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (cameraInputRef.current) cameraInputRef.current.value = '';
     };
 
-    const eliminarGasto = (id) => {
+    const eliminarGasto = async (id) => {
+        const { error } = await supabase.from('gastos').delete().eq('id', id);
+        if (error) {
+            alert('Error al eliminar el gasto: ' + error.message);
+            return;
+        }
         setGastos(gastos.filter(gasto => gasto.id !== id));
     };
 
@@ -450,7 +479,7 @@ Generado el: ${new Date().toLocaleString()}
                                                     <tr key={`${idx}-${pIdx}`}>
                                                         <td>{prod.nombre}</td>
                                                         <td>{prod.cantidad}</td>
-                                                        <td>{venta.usuario || 'N/A'}</td>
+                                                        <td>{venta.vendedor || 'N/A'}</td>
                                                         <td>{venta.metodoPago || 'N/A'}</td>
                                                         <td>${(prod.precio * prod.cantidad).toFixed(2)}</td>
                                                     </tr>
@@ -512,7 +541,7 @@ Generado el: ${new Date().toLocaleString()}
                                 {ventasDelDia.map((venta, index) => (
                                     <tr key={index}>
                                         <td>{new Date(venta.fecha).toLocaleTimeString()}</td>
-                                        <td>{venta.usuario || 'N/A'}</td>
+                                        <td>{venta.vendedor || 'N/A'}</td>
                                         <td>
                                             <div className="productos-lista">
                                                 {venta.productos?.map((prod, idx) => (

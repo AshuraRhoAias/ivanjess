@@ -338,7 +338,7 @@ function Admin() {
                                     <div className="imagen-preview">
                                         {/* eslint-disable-next-line @next/next/no-img-element */}
                                         <img
-                                            src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/products/image/${nuevoProducto.img}`}
+                                            src={nuevoProducto.img}
                                             alt="Preview"
                                             style={{ width: '100%', height: 'auto', maxWidth: '300px' }}
                                         />
